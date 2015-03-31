@@ -25,18 +25,6 @@ FObject = (function () {
         return !!object && !(object._objFlags & Destroyed);
     };
 
-    /**
-     * @property isValid
-     * @type boolean
-     */
-    Object.defineProperty(FObject, 'isValid', {
-        value: function (object) {
-            Fire.warn('FObject.isValid is deprecated, use Fire.isValid instead please');
-            return Fire.isValid(object);
-        },
-        enumerable: false
-    });
-
     // internal static
 
     var objectsToDestroy = [];
@@ -131,6 +119,8 @@ FObject = (function () {
             }
         }
     };
+
+    FObject.prototype._onPreDestroy = null;
 
     FObject.prototype._destroyImmediate = function () {
         if (this._objFlags & Destroyed) {

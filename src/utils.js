@@ -20,6 +20,55 @@ Fire.padLeft = function ( text, width, ch ) {
     return text;
 };
 
+/**
+ * @method fitRatio
+ * @param {number} ratio (w/h)
+ * @param {number} destWidth
+ * @param {number} destHeight
+ * @return {array}
+ */
+Fire.fitRatio = function ( ratio, destWidth, destHeight ) {
+    var srcWidth, srcHeight;
+    if ( ratio > 1 ) {
+        srcWidth = destWidth;
+        srcHeight = srcWidth / ratio;
+    }
+    else {
+        srcHeight = destHeight;
+        srcWidth = srcHeight * ratio;
+    }
+    return Fire.fitSize( srcWidth, srcHeight, destWidth, destHeight );
+};
+
+Fire.fitSize = function ( srcWidth, srcHeight, destWidth, destHeight ) {
+    var width, height;
+    if ( srcWidth > destWidth &&
+         srcHeight > destHeight )
+    {
+        width = destWidth;
+        height = srcHeight * destWidth/srcWidth;
+
+        if ( height > destHeight ) {
+            height = destHeight;
+            width = srcWidth * destHeight/srcHeight;
+        }
+    }
+    else if ( srcWidth > destWidth ) {
+        width = destWidth;
+        height = srcHeight * destWidth/srcWidth;
+    }
+    else if ( srcHeight > destHeight ) {
+        width = srcWidth * destHeight/srcHeight;
+        height = destHeight;
+    }
+    else {
+        width = srcWidth;
+        height = srcHeight;
+    }
+
+    return [width,height];
+};
+
 //
 Fire.getEnumList = function (enumDef) {
     if ( enumDef.__enums__ !== undefined )
@@ -28,16 +77,17 @@ Fire.getEnumList = function (enumDef) {
     var enums = [];
     for ( var entry in enumDef ) {
         if ( enumDef.hasOwnProperty(entry) ) {
-            var test = parseInt(entry);
-            if ( isNaN(test) ) {
-                enums.push( { name: enumDef[enumDef[entry]], value: enumDef[entry] } );
+            var value = enumDef[entry];
+            var isInteger = typeof value === 'number' && (value | 0) === value; // polyfill Number.isInteger
+            if ( isInteger ) {
+                enums.push( { name: entry, value: value } );
             }
         }
     }
     enums.sort( function ( a, b ) { return a.value - b.value; } );
 
     enumDef.__enums__ = enums;
-    return enumDef.__enums__;
+    return enums;
 };
 
 //
@@ -148,7 +198,7 @@ function _isDomNode(obj) {
  * @return {boolean} is {} ?
  */
 var _isPlainEmptyObj_DEV = function (obj) {
-    if (obj.constructor !== ({}).constructor) {
+    if (!obj || obj.constructor !== ({}).constructor) {
         return false;
     }
     // jshint ignore: start

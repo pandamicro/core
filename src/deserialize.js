@@ -62,15 +62,20 @@ var _Deserializer = (function () {
         }
     };
 
+    // 和 _deserializeObject 不同的地方在于会判断 id 和 uuid
     function _deserializeObjField (self, obj, jsonObj, propName, target) {
         var id = jsonObj.__id__;
         if (typeof id === 'undefined') {
             var uuid = jsonObj.__uuid__;
             if (uuid) {
                 // @ifndef PLAYER
-                if (target && target[propName] && target[propName]._uuid === uuid) {
-                    return;
-                }
+                // 这里不做任何操作，因为有可能调用者需要知道依赖哪些 asset。
+                // 调用者使用 uuidList 时，可以判断 obj[propName] 是否为空，为空则表示待进一步加载，
+                // 不为空则只是表明依赖关系。
+                //if (target && target[propName] && target[propName]._uuid === uuid) {
+                //    console.assert(obj[propName] === target[propName]);
+                //    return;
+                //}
                 // @endif
                 self.result.uuidList.push(uuid);
                 self.result.uuidObjList.push(obj);
@@ -99,6 +104,46 @@ var _Deserializer = (function () {
     }
 
     function _deserializePrimitiveObject (self, instance, serialized) {
+        for (var propName in serialized) {
+            if (serialized.hasOwnProperty(propName)) {
+                var prop = serialized[propName];
+                if (typeof prop !== 'object') {
+                    if (propName !== '__type__'/* && k != '__id__'*/) {
+                        instance[propName] = prop;
+                    }
+                }
+                else {
+                    if (prop) {
+                        if ( !prop.__uuid__ && typeof prop.__id__ === 'undefined' ) {
+                            // @ifdef PLAYER
+                            instance[propName] = _deserializeObject(self, prop);
+                            // @endif
+                            // @ifndef PLAYER
+                            instance[propName] = _deserializeObject(self, prop, self._target && instance[propName]);
+                            // @endif
+                        }
+                        else {
+                            // @ifdef PLAYER
+                            _deserializeObjField(self, instance, prop, propName);
+                            // @endif
+                            // @ifndef PLAYER
+                            _deserializeObjField(self, instance, prop, propName, self._target && instance);
+                            // @endif
+                        }
+                    }
+                    else {
+                        instance[propName] = null;
+                    }
+                }
+            }
+        }
+    }
+
+    function _deserializeTypedObject (self, instance, serialized) {
+        //++self.stackCounter;
+        //if (self.stackCounter === 100) {
+        //    debugger;
+        //}
         for (var propName in instance) {    // 遍历 instance，如果具有类型，才不会把 __type__ 也读进来
             var prop = serialized[propName];
             if (typeof prop !== 'undefined' && serialized.hasOwnProperty(propName)) {
@@ -130,6 +175,71 @@ var _Deserializer = (function () {
                 }
             }
         }
+        //--self.stackCounter;
+    }
+
+    function _deserializeFireClass(self, obj, serialized, klass, target) {
+        var props = klass.__props__;
+        if (!props) {
+            return;
+        }
+        for (var p = 0; p < props.length; p++) {
+            var propName = props[p];
+            var attrs = Fire.attr(klass, propName);
+            // assume all prop in __props__ must have attr
+            var rawType = attrs.rawType;
+            if (!rawType) {
+                if (attrs.serializable === false) {
+                    continue;   // skip nonSerialized
+                }
+                if (!self._editor && attrs.editorOnly) {
+                    continue;   // skip editor only if not editor
+                }
+                var prop = serialized[propName];
+                if (typeof prop !== 'undefined') {
+                    if (typeof prop !== 'object') {
+                        obj[propName] = prop;
+                    }
+                    else {
+                        if (prop) {
+                            if (!prop.__uuid__ && typeof prop.__id__ === 'undefined') {
+                                // @ifdef PLAYER
+                                obj[propName] = _deserializeObject(self, prop);
+                                // @endif
+                                // @ifndef PLAYER
+                                obj[propName] = _deserializeObject(self, prop, target && target[propName]);
+                                // @endif
+                            }
+                            else {
+                                // @ifdef PLAYER
+                                _deserializeObjField(self, obj, prop, propName);
+                                // @endif
+                                // @ifndef PLAYER
+                                _deserializeObjField(self, obj, prop, propName, target && obj);
+                                // @endif
+                            }
+                        }
+                        else {
+                            obj[propName] = null;
+                        }
+                    }
+                }
+            }
+            else {
+                // always load raw objects even if property not serialized
+                if (self.result.rawProp) {
+                    Fire.error('not support multi raw object in a file');
+                    // 这里假定每个asset都有uuid，每个json只能包含一个asset，只能包含一个rawProp
+                }
+                self.result.rawProp = propName;
+            }
+        }
+        if (props[props.length - 1] === '_$erialized') {
+            // save original serialized data
+            obj._$erialized = serialized;
+            // parse the serialized data as primitive javascript object, so its __id__ will be dereferenced
+            _deserializePrimitiveObject(self, obj._$erialized, serialized);
+        }
     }
 
     /**
@@ -138,9 +248,12 @@ var _Deserializer = (function () {
      */
     var _deserializeObject = function (self, serialized, target) {
         var propName, prop;
-        var obj = null;
+        var obj = null;     // the obj to return
         var klass = null;
         if (serialized.__type__) {
+
+            // Type Object (including FireClass)
+
             klass = self._classFinder(serialized.__type__);
             if (!klass) {
                 Fire.error('[Fire.deserialize] unknown type: ' + serialized.__type__);
@@ -163,24 +276,33 @@ var _Deserializer = (function () {
                 obj = new klass();
             }
             // @endif
+
+            if ( Fire._isFireClass(klass) ) {
+                _deserializeFireClass(self, obj, serialized, klass, target);
+            }
+            else {
+                _deserializeTypedObject(self, obj, serialized);
+            }
         }
-        else if (!Array.isArray(serialized)) {
+        else if ( !Array.isArray(serialized) ) {
+
             // embedded primitive javascript object
+
             // @ifdef PLAYER
-            obj = serialized;
+            obj = {};
             // @endif
             // @ifndef PLAYER
-            obj = target || serialized;
-            //for (var key in serialized) {
-            //    obj[key] = serialized[key];
-            //
-            //}
+            obj = target || {};
             // @endif
+
+            _deserializePrimitiveObject(self, obj, serialized);
         }
         else {
-            // array
+
+            // Array
+
             // @ifdef PLAYER
-            obj = serialized;
+            obj = new Array(serialized.length);
             // @endif
             // @ifndef PLAYER
             if (target) {
@@ -188,7 +310,7 @@ var _Deserializer = (function () {
                 obj = target;
             }
             else {
-                obj = serialized;
+                obj = new Array(serialized.length);
             }
             // @endif
             for (var i = 0; i < serialized.length; i++) {
@@ -211,81 +333,10 @@ var _Deserializer = (function () {
                         // @endif
                     }
                 }
-                // @ifndef PLAYER
-                else if (target) {
-                    obj[i] = serialized[i];
-                }
-                // @endif
-            }
-            return obj;
-        }
-
-        // parse property
-        if (klass && Fire._isFireClass(klass)) {
-            var props = klass.__props__;
-            if (!props) {
-                return obj;
-            }
-            for (var p = 0; p < props.length; p++) {
-                propName = props[p];
-                var attrs = Fire.attr(klass, propName);
-                // assume all prop in __props__ must have attr
-                var rawType = attrs.rawType;
-                if (!rawType) {
-                    if (attrs.serializable === false) {
-                        continue;   // skip nonSerialized
-                    }
-                    if (!self._editor && attrs.editorOnly) {
-                        continue;   // skip editor only if not editor
-                    }
-                    prop = serialized[propName];
-                    if (typeof prop !== 'undefined') {
-                        if (typeof prop !== 'object') {
-                            obj[propName] = prop;
-                        }
-                        else {
-                            if (prop) {
-                                if ( !prop.__uuid__ && typeof prop.__id__ === 'undefined' ) {
-                                    // @ifdef PLAYER
-                                    obj[propName] = _deserializeObject(self, prop);
-                                    // @endif
-                                    // @ifndef PLAYER
-                                    obj[propName] = _deserializeObject(self, prop, target && target[propName]);
-                                    // @endif
-                                }
-                                else {
-                                    // @ifdef PLAYER
-                                    _deserializeObjField(self, obj, prop, propName);
-                                    // @endif
-                                    // @ifndef PLAYER
-                                    _deserializeObjField(self, obj, prop, propName, target && obj);
-                                    // @endif
-                                }
-                            }
-                            else {
-                                obj[propName] = null;
-                            }
-                        }
-                    }
-                }
                 else {
-                    // always load raw objects even if property not serialized
-                    if (self.result.rawProp) {
-                        Fire.error('not support multi raw object in a file');
-                        // 这里假定每个asset都有uuid，每个json只能包含一个asset，只能包含一个rawProp
-                    }
-                    self.result.rawProp = propName;
+                    obj[i] = prop;
                 }
             }
-            if (props[props.length - 1] === '_$erialized') {
-                // save original serialized data
-                obj._$erialized = serialized;
-                // parse the serialized data as primitive javascript object, so its __id__ will be dereferenced
-                _deserializePrimitiveObject(self, obj._$erialized, serialized);
-            }
-        }
-        else {
-            _deserializePrimitiveObject(self, obj, serialized);
         }
         return obj;
     };
@@ -398,6 +449,7 @@ Fire._DeserializeInfo.prototype.getUuidOf = function (obj, propName) {
 };
 
 Fire._DeserializeInfo.prototype.assignAssetsBy = function (callback) {
+    var success = true;
     for (var i = 0, len = this.uuidList.length; i < len; i++) {
         var uuid = this.uuidList[i];
         var asset = callback(uuid);
@@ -408,6 +460,8 @@ Fire._DeserializeInfo.prototype.assignAssetsBy = function (callback) {
         }
         else {
             Fire.error('Failed to assign asset: ' + uuid);
+            success = false;
         }
     }
+    return success;
 };

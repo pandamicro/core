@@ -1,7 +1,7 @@
 var Asset = (function () {
 
     var Asset = Fire.extend('Fire.Asset', Fire.HashObject, function () {
-        // define uuid, uuid can not destory
+        // define uuid, uuid can not destroy
         Object.defineProperty(this, '_uuid', {
             value: '',
             writable: true,
@@ -9,12 +9,8 @@ var Asset = (function () {
                                 // so the _uuid can not display in console.
         });
 
+        this.dirty = false;
     });
-
-    /* TODO: These callbacks available for ?
-    Asset.prototype.onBeforeSerialize = function () {};
-    Asset.prototype.onAfterDeserialize = function () {};
-     */
 
     Asset.prototype._setRawExtname = function (extname) {
         if (this.hasOwnProperty('_rawext')) {

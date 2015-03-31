@@ -6,11 +6,11 @@
  */
 var _appendProp = function (name/*, isGetter*/) {
     // @ifdef DEV
-    var JsVarReg = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
-    if (!JsVarReg.test(name)) {
-        Fire.error('The property name "' + name + '" is not compliant with JavaScript naming standards');
-        return;
-    }
+    //var JsVarReg = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
+    //if (!JsVarReg.test(name)) {
+    //    Fire.error('The property name "' + name + '" is not compliant with JavaScript naming standards');
+    //    return;
+    //}
     // @endif
 
     if (!this.__props__) {
@@ -151,9 +151,6 @@ var _metaClass = {
         }
         // @endif
 
-        // @ifdef DEV
-        var displayInInspector = true;
-        // @endif
         if (attribute) {
             var AttrArgStart = 2;
             for (var i = AttrArgStart; i < arguments.length; i++) {
@@ -169,9 +166,6 @@ var _metaClass = {
 
                 // @ifdef DEV
                 // check attributes
-                if (attr.hideInInspector) {
-                    displayInInspector = false;
-                }
                 if (attr.serializable === false || attr.editorOnly === true) {
                     Fire.warn('No need to use Fire.NonSerialized or Fire.EditorOnly for the getter of ' +
                         JS.getClassName(this) + '.' + name + ', every getter is actually non-serialized.');
@@ -186,17 +180,10 @@ var _metaClass = {
         Fire.attr(this, name, Fire.NonSerialized);
 
         // @ifdef DEV
-        if (displayInInspector) {
-            _appendProp.call(this, name/*, true*/);
-        }
-        else {
-            var index = this.__props__.indexOf(name);
-            if (index >= 0) {
-                Fire.error(JS.getClassName(this) + '.' + name + ' is already defined!');
-                return this;
-            }
-        }
+        // 不论是否 hide in inspector 都要添加到 props，否则 asset watcher 不能正常工作
+        _appendProp.call(this, name/*, true*/);
         // @endif
+
         Object.defineProperty(this.prototype, name, {
             get: getter,
             configurable: true
@@ -268,10 +255,18 @@ var _metaClass = {
      * @return {function} the class itself
      */
     getset: function (name, getter, setter, attribute) {
-        this.get(name, getter, attribute);
+        'use strict';
+        if (attribute) {
+            var getterArgs = [].slice.call(arguments);
+            getterArgs.splice(2, 1);    // remove setter
+            this.get.apply(this, getterArgs);
+        }
+        else {
+            this.get(name, getter);
+        }
         this.set(name, setter);
         return this;
-    },
+    }
 };
 
 var _createInstanceProps = function (instance, itsClass) {
@@ -369,7 +364,7 @@ function _initClass(className, fireClass) {
     }
 }
 
-function _defineFireClass (className, baseClass, constructor) {
+Fire._doDefine = function (className, baseClass, constructor) {
     var fireClass = _createCtor(constructor, baseClass);
     _initClass(className, fireClass);
 
@@ -390,18 +385,18 @@ function _defineFireClass (className, baseClass, constructor) {
     // @endif
 
     return fireClass;
-}
+};
 
 /**
  * Defines a FireClass using the given constructor.
  *
  * @method define
- * @param {string} className - the name of class that is used to deserialize this class
+ * @param {string} [className] - the name of class that is used to deserialize this class
  * @param {function} [constructor] - a constructor function that is used to instantiate this class
  * @return {function} the constructor of newly defined class
  */
 Fire.define = function (className, constructor) {
-    return _defineFireClass(className, null, constructor);
+    return Fire.extend(className, null, constructor);
 };
 
 /**
@@ -409,7 +404,7 @@ Fire.define = function (className, constructor) {
  * See also {% crosslink extend Fire.JS.extend %}.
  *
  * @method extend
- * @param {string} className - the name of class that is used to deserialize this class
+ * @param {string} [className] - the name of class that is used to deserialize this class
  * @param {function} baseClass - !#en The base class to inherit from
  *                               !#zh 继承的基类
  * @param {function} [constructor] - a constructor function that is used to instantiate this class,
@@ -417,7 +412,33 @@ Fire.define = function (className, constructor) {
  * @return {function} the constructor of newly defined class
  */
 Fire.extend = function (className, baseClass, constructor) {
-    return _defineFireClass(className, baseClass, constructor);
+    if (typeof className === 'function') {
+// @ifdef DEV
+        if (constructor) {
+            Fire.error('[Fire.extend] invalid type of arguments');
+            return null;
+        }
+// @endif
+        constructor = baseClass;
+        baseClass = className;
+        className = '';
+    }
+    if (typeof className === 'string') {
+        return Fire._doDefine(className, baseClass, constructor);
+    }
+    else if (typeof className === 'undefined') {
+        // 未传入任何参数
+        return Fire._doDefine('', baseClass, constructor);
+    }
+// @ifdef DEV
+    else if (className) {
+        Fire.error('[Fire.extend] unknown typeof first argument');
+    }
+    else {
+        Fire.error('[Fire.extend] first argument must be non-nil');
+    }
+// @endif
+    return null;
 };
 
 function _createCtor (constructor, baseClass) {

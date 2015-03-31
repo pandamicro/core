@@ -1,4 +1,19 @@
 var Color = (function () {
+
+    var DefaultColors = {
+        // color: [r, g, b, a]
+        white:      [1, 1, 1, 1],
+        black:      [0, 0, 0, 1],
+        transparent:[0, 0, 0, 0],
+        gray:       [0.5, 0.5, 0.5],
+        red:        [1, 0, 0],
+        green:      [0, 1, 0],
+        blue:       [0, 0, 1],
+        yellow:     [1, 235/255, 4/255],
+        cyan:       [0, 1, 1],
+        magenta:    [1, 0, 1]
+    };
+
     /**
      * A class represents RGBA color
      * @class Color
@@ -15,6 +30,15 @@ var Color = (function () {
         this.a = typeof a === 'number' ? a : 1.0;
     }
     JS.setClassName('Fire.Color', Color);
+
+    for (var colorName in DefaultColors) {
+        var colorGetter = (function (r, g, b, a) {
+            return function () {
+                return new Color(r, g, b, a);
+            };
+        }).apply(null, DefaultColors[colorName]);
+        Object.defineProperty(Color, colorName, { get: colorGetter });
+    }
 
     /**
      * Clone a new color from the current color.
@@ -71,10 +95,10 @@ var Color = (function () {
     };
 
     Color.prototype.clamp = function () {
-        this.r = Math.clamp(this.r);
-        this.g = Math.clamp(this.g);
-        this.b = Math.clamp(this.b);
-        this.a = Math.clamp(this.a);
+        this.r = Math.clamp01(this.r);
+        this.g = Math.clamp01(this.g);
+        this.b = Math.clamp01(this.b);
+        this.a = Math.clamp01(this.a);
     };
 
     Color.prototype.fromHEX = function (hexString) {
@@ -110,7 +134,9 @@ var Color = (function () {
     };
 
     Color.prototype.toRGBValue = function () {
-        return (this.r * 255 << 16) + (this.g * 255 << 8) + this.b * 255;
+        return (Math.clamp01(this.r) * 255 << 16) +
+               (Math.clamp01(this.g) * 255 << 8) +
+               (Math.clamp01(this.b) * 255);
     };
 
     Color.prototype.toCCColor = function () {

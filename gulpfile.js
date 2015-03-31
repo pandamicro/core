@@ -30,6 +30,7 @@ var paths = {
         'src/utils.js',
         'src/attribute.js',
         'src/class.js',
+        'src/class-new.js',
         'src/path.js',
         'src/object.js',
         'src/hash-object.js',
@@ -44,6 +45,7 @@ var paths = {
         // assets
         'src/asset/asset.js',
         'src/asset/custom-asset.js',
+        'src/asset/script-asset.js',
         'src/asset/texture.js',
         'src/asset/sprite.js',
         'src/asset/atlas.js',
@@ -92,7 +94,8 @@ gulp.task('jshint', function() {
     .pipe(jshint({
         forin: false,
         multistr: true,
-    }))
+        loopfunc: true
+        }))
     .pipe(jshint.reporter(stylish))
     ;
 });
@@ -162,7 +165,7 @@ gulp.task('unit-runner', function() {
                ;
 });
 
-gulp.task('test', ['js-min', 'unit-runner'], function() {
+gulp.task('test', ['js-min', 'js-dev', 'unit-runner'], function() {
     var timeOutInSeconds = 5;
     return gulp.src(['test/unit/**/*.html', '!**/*.dev.*'], { read: false })
                .pipe(qunit({ timeout: timeOutInSeconds }))

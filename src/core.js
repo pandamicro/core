@@ -1,5 +1,8 @@
 /**
- * !#en Get property descriptor !#zh 获取属性的描述
+ * !#en Get property descriptor
+ * descriptor is blah blah
+ * !#zh 获取 property 的描述物体
+ * 描述物体是这样的
  * @method _getPropertyDescriptor
  * @param {object} obj - !#en !#zh 获取属性的对象
  * @param {string} name
@@ -230,7 +233,16 @@ Fire.unregisterClass to remove the id of unused class';
      * @return {function} constructor
      */
     JS._getClassById = function (classId) {
-        return _idToClass[classId];
+        var cls = _idToClass[classId];
+// @ifdef EDITOR
+        if (!cls) {
+            if (classId.length === 32) {
+                // 尝试解析旧的 uuid 压缩格式
+                cls = _idToClass[Fire.compressUuid(classId)];
+            }
+        }
+// @endif
+        return cls;
     };
 
     /**
@@ -315,3 +327,50 @@ else {
         console.error.apply(console, arguments);
     };
 }
+
+// enum
+
+Fire.defineEnum = function (obj) {
+    var enumType = {};
+    Object.defineProperty(enumType, '__enums__', {
+        value: undefined,
+        writable: true
+    });
+
+    var lastIndex = -1;
+    for (var key in obj) {
+        var val = obj[key];
+        if (val === -1) {
+            val = ++lastIndex;
+        }
+        else {
+            lastIndex = val;
+        }
+        enumType[key] = val;
+
+        var reverseKey = '' + val;
+        if (key !== reverseKey) {
+            Object.defineProperty(enumType, reverseKey, {
+                value: key,
+                enumerable: false
+            });
+        }
+    }
+    return enumType;
+};
+
+// @ifdef DEV
+
+// check key order in object literal
+var _TestEnum = Fire.defineEnum({
+    ZERO: -1,
+    ONE: -1,
+    TWO: -1,
+    THREE: -1
+});
+if (_TestEnum.ZERO !== 0 || _TestEnum.ONE !== 1 || _TestEnum.TWO !== 2 || _TestEnum.THREE !== 3) {
+    Fire.error('Sorry, "Fire.defineEnum" not available on this platform, ' +
+               'please report this error here: https://github.com/fireball-x/fireball/issues/new !');
+}
+
+// @endif
